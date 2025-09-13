@@ -135,9 +135,22 @@ const mockTasks: Task[] = [
 ];
 
 export const EMSProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
-  const [employees] = useState<Employee[]>(mockEmployees);
+  const [employees, setEmployees] = useState<Employee[]>(mockEmployees);
   const [attendance, setAttendance] = useState<AttendanceRecord[]>(generateMockAttendance());
   const [tasks, setTasks] = useState<Task[]>(mockTasks);
+
+  // Listen for new employee registrations
+  React.useEffect(() => {
+    const handleNewEmployee = (event: CustomEvent) => {
+      const newEmployee: Employee = event.detail;
+      setEmployees(prev => [...prev, newEmployee]);
+    };
+
+    window.addEventListener('newEmployeeRegistered', handleNewEmployee as EventListener);
+    return () => {
+      window.removeEventListener('newEmployeeRegistered', handleNewEmployee as EventListener);
+    };
+  }, []);
 
   const markAttendance = (employeeId: string, status: AttendanceStatus, date: string) => {
     setAttendance(prev => {
