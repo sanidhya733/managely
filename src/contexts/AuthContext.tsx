@@ -1,4 +1,7 @@
-import React, { createContext, useContext, useState, ReactNode } from 'react';
+import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
+import { supabase } from '@/integrations/supabase/client';
+import { User as SupabaseUser, Session } from '@supabase/supabase-js';
+import { toast } from '@/hooks/use-toast';
 
 export type UserRole = 'admin' | 'employee';
 
@@ -12,109 +15,181 @@ export interface User {
 
 interface AuthContextType {
   user: User | null;
+  session: Session | null;
   login: (email: string, password: string, role: UserRole) => Promise<boolean>;
   register: (userData: { name: string; email: string; password: string; department: string; position: string }) => Promise<boolean>;
   logout: () => void;
   isAuthenticated: boolean;
+  loading: boolean;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
-// Mock users for demonstration
-const mockUsers: User[] = [
-  {
-    id: '1',
-    name: 'Admin User',
-    email: 'admin@company.com',
-    role: 'admin',
-    department: 'Management'
-  },
-  {
-    id: '2',
-    name: 'John Smith',
-    email: 'john@company.com',
-    role: 'employee',
-    department: 'Engineering'
-  },
-  {
-    id: '3',
-    name: 'Sarah Johnson',
-    email: 'sarah@company.com',
-    role: 'employee',
-    department: 'Design'
-  },
-  {
-    id: '4',
-    name: 'Mike Wilson',
-    email: 'mike@company.com',
-    role: 'employee',
-    department: 'Marketing'
-  }
-];
-
 export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
   const [user, setUser] = useState<User | null>(null);
-  const [allUsers, setAllUsers] = useState<User[]>(mockUsers);
+  const [session, setSession] = useState<Session | null>(null);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    // Set up auth state listener
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(
+      async (event, session) => {
+        console.log('Auth state changed:', event, session);
+        setSession(session);
+        
+        if (session?.user) {
+          // Fetch user profile
+          const { data: profile } = await supabase
+            .from('profiles')
+            .select('*')
+            .eq('id', session.user.id)
+            .single();
+          
+          if (profile) {
+            setUser({
+              id: profile.id,
+              name: profile.name,
+              email: profile.email,
+              role: profile.role as UserRole,
+              department: profile.department
+            });
+          }
+        } else {
+          setUser(null);
+        }
+        setLoading(false);
+      }
+    );
+
+    // Check for existing session
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      console.log('Initial session:', session);
+      // Auth state change listener will handle setting user
+    });
+
+    return () => subscription.unsubscribe();
+  }, []);
 
   const login = async (email: string, password: string, role: UserRole): Promise<boolean> => {
-    // Simulate API call delay
-    await new Promise(resolve => setTimeout(resolve, 1000));
-    
-    // Find user by email and role
-    const foundUser = allUsers.find(u => u.email === email && u.role === role);
-    
-    if (foundUser) {
-      setUser(foundUser);
-      return true;
+    try {
+      const { data, error } = await supabase.auth.signInWithPassword({
+        email,
+        password
+      });
+
+      if (error) {
+        console.error('Login error:', error);
+        toast({
+          title: "Login failed",
+          description: error.message,
+          variant: "destructive"
+        });
+        return false;
+      }
+
+      if (data.user) {
+        // Check if user has the correct role
+        const { data: profile } = await supabase
+          .from('profiles')
+          .select('role')
+          .eq('id', data.user.id)
+          .single();
+
+        if (profile?.role !== role) {
+          await supabase.auth.signOut();
+          toast({
+            title: "Login failed",
+            description: `You don't have ${role} access`,
+            variant: "destructive"
+          });
+          return false;
+        }
+
+        toast({
+          title: "Login successful",
+          description: "Welcome back!"
+        });
+        return true;
+      }
+      return false;
+    } catch (error) {
+      console.error('Login error:', error);
+      toast({
+        title: "Login failed",
+        description: "An unexpected error occurred",
+        variant: "destructive"
+      });
+      return false;
     }
-    
-    return false;
   };
 
   const register = async (userData: { name: string; email: string; password: string; department: string; position: string }): Promise<boolean> => {
-    // Simulate API call delay
-    await new Promise(resolve => setTimeout(resolve, 1000));
-    
-    // Check if user already exists
-    const existingUser = allUsers.find(u => u.email === userData.email);
-    if (existingUser) {
+    try {
+      const redirectUrl = `${window.location.origin}/`;
+
+      const { data, error } = await supabase.auth.signUp({
+        email: userData.email,
+        password: userData.password,
+        options: {
+          emailRedirectTo: redirectUrl,
+          data: {
+            name: userData.name,
+            role: 'employee',
+            department: userData.department,
+            position: userData.position
+          }
+        }
+      });
+
+      if (error) {
+        console.error('Registration error:', error);
+        toast({
+          title: "Registration failed",
+          description: error.message,
+          variant: "destructive"
+        });
+        return false;
+      }
+
+      if (data.user) {
+        toast({
+          title: "Registration successful",
+          description: "Please check your email to verify your account"
+        });
+        return true;
+      }
+      return false;
+    } catch (error) {
+      console.error('Registration error:', error);
+      toast({
+        title: "Registration failed",
+        description: "An unexpected error occurred",
+        variant: "destructive"
+      });
       return false;
     }
-
-    // Create new user
-    const newUser: User = {
-      id: (allUsers.length + 1).toString(),
-      name: userData.name,
-      email: userData.email,
-      role: 'employee' as UserRole,
-      department: userData.department
-    };
-
-    // Add to users list
-    setAllUsers(prev => [...prev, newUser]);
-    
-    // Dispatch custom event to notify EMSContext
-    window.dispatchEvent(new CustomEvent('newEmployeeRegistered', { 
-      detail: { 
-        ...newUser, 
-        position: userData.position,
-        joinDate: new Date().toISOString().split('T')[0]
-      } 
-    }));
-
-    return true;
   };
 
-  const logout = () => {
-    setUser(null);
+  const logout = async () => {
+    try {
+      await supabase.auth.signOut();
+      toast({
+        title: "Logged out",
+        description: "You have been successfully logged out"
+      });
+    } catch (error) {
+      console.error('Logout error:', error);
+    }
   };
 
   const value: AuthContextType = {
     user,
+    session,
     login,
     register,
     logout,
-    isAuthenticated: !!user
+    isAuthenticated: !!user && !!session,
+    loading
   };
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
@@ -128,4 +203,3 @@ export const useAuth = () => {
   return context;
 };
 
-export { mockUsers };

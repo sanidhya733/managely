@@ -17,7 +17,15 @@ const ProtectedRoute: React.FC<{ children: React.ReactNode; allowedRole?: 'admin
   children, 
   allowedRole 
 }) => {
-  const { isAuthenticated, user } = useAuth();
+  const { isAuthenticated, user, loading } = useAuth();
+  
+  if (loading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center">
+        <div className="text-lg">Loading...</div>
+      </div>
+    );
+  }
   
   if (!isAuthenticated) {
     return <Navigate to="/login" replace />;
