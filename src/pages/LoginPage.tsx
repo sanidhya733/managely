@@ -14,6 +14,7 @@ const LoginPage: React.FC = () => {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [isLoading, setIsLoading] = useState(false);
+  const [selectedRole, setSelectedRole] = useState<UserRole>('admin');
   const [isRegistering, setIsRegistering] = useState(false);
   
   // Registration form state
@@ -44,13 +45,20 @@ const LoginPage: React.FC = () => {
     setIsLoading(true);
 
     try {
-      const success = await login(email, password);
+      const success = await login(email, password, selectedRole);
       
       if (success) {
         toast({
           title: "Login Successful",
           description: `Welcome to the Employee Management System`,
         });
+        
+        // Navigate based on role
+        if (selectedRole === 'admin') {
+          navigate('/admin');
+        } else {
+          navigate('/employee');
+        }
       } else {
         toast({
           title: "Login Failed",
@@ -137,15 +145,36 @@ const LoginPage: React.FC = () => {
           <CardContent>
             {!isRegistering ? (
               <>
-                <div className="text-center mb-6">
-                  <Badge variant="secondary" className="mb-2">Demo Credentials</Badge>
-                  <p className="text-sm text-muted-foreground">
-                    Admin: admin@company.com / password<br />
-                    Employee: john@company.com / password<br />
-                    Employee: sarah@company.com / password<br />
-                    Employee: mike@company.com / password
-                  </p>
-                </div>
+                <Tabs value={selectedRole} onValueChange={(value) => setSelectedRole(value as UserRole)} className="mb-6">
+                  <TabsList className="grid w-full grid-cols-2">
+                    <TabsTrigger value="admin" className="flex items-center gap-2">
+                      <UserCheck className="w-4 h-4" />
+                      Admin
+                    </TabsTrigger>
+                    <TabsTrigger value="employee" className="flex items-center gap-2">
+                      <Users className="w-4 h-4" />
+                      Employee
+                    </TabsTrigger>
+                  </TabsList>
+                  
+                  <TabsContent value="admin" className="mt-4">
+                    <div className="text-center">
+                      <Badge variant="secondary" className="mb-2">Demo Credentials</Badge>
+                      <p className="text-sm text-muted-foreground">admin@company.com / password</p>
+                    </div>
+                  </TabsContent>
+                  
+                  <TabsContent value="employee" className="mt-4">
+                    <div className="text-center">
+                      <Badge variant="secondary" className="mb-2">Demo Credentials</Badge>
+                      <p className="text-sm text-muted-foreground">
+                        john@company.com / password<br />
+                        sarah@company.com / password<br />
+                        mike@company.com / password
+                      </p>
+                    </div>
+                  </TabsContent>
+                </Tabs>
 
                 <form onSubmit={handleLogin} className="space-y-4">
                   <div>
