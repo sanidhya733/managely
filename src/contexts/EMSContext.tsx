@@ -1,4 +1,5 @@
 import React, { createContext, useContext, useState, ReactNode } from 'react';
+import { supabase } from '@/lib/supabase';
 
 export type AttendanceStatus = 'present' | 'absent' | 'overtime' | 'halfday';
 export type TaskStatus = 'pending' | 'accepted' | 'completed';
@@ -36,160 +37,228 @@ interface EMSContextType {
   employees: Employee[];
   attendance: AttendanceRecord[];
   tasks: Task[];
+  loading: boolean;
   markAttendance: (employeeId: string, status: AttendanceStatus, date: string) => void;
   createTask: (task: Omit<Task, 'id'>) => void;
   updateTaskStatus: (taskId: string, status: TaskStatus) => void;
   getEmployeeAttendance: (employeeId: string, month?: string) => AttendanceRecord[];
   getEmployeeTasks: (employeeId: string) => Task[];
   getAttendanceStats: (employeeId: string, month?: string) => Record<AttendanceStatus, number>;
+  refreshData: () => Promise<void>;
 }
 
 const EMSContext = createContext<EMSContextType | undefined>(undefined);
 
-// Mock data
-const mockEmployees: Employee[] = [
-  {
-    id: '2',
-    name: 'John Smith',
-    email: 'john@company.com',
-    department: 'Engineering',
-    position: 'Frontend Developer',
-    joinDate: '2023-01-15'
-  },
-  {
-    id: '3',
-    name: 'Sarah Johnson',
-    email: 'sarah@company.com',
-    department: 'Design',
-    position: 'UI/UX Designer',
-    joinDate: '2023-02-01'
-  },
-  {
-    id: '4',
-    name: 'Mike Wilson',
-    email: 'mike@company.com',
-    department: 'Marketing',
-    position: 'Marketing Specialist',
-    joinDate: '2023-03-01'
-  }
-];
-
-const generateMockAttendance = (): AttendanceRecord[] => {
-  const records: AttendanceRecord[] = [];
-  const currentDate = new Date();
-  const currentMonth = currentDate.getMonth();
-  const currentYear = currentDate.getFullYear();
-  
-  mockEmployees.forEach(employee => {
-    for (let day = 1; day <= 30; day++) {
-      const date = new Date(currentYear, currentMonth, day);
-      if (date <= currentDate) {
-        const statuses: AttendanceStatus[] = ['present', 'present', 'present', 'present', 'absent', 'overtime', 'halfday'];
-        const randomStatus = statuses[Math.floor(Math.random() * statuses.length)];
-        
-        records.push({
-          id: `${employee.id}-${date.toISOString().split('T')[0]}`,
-          employeeId: employee.id,
-          date: date.toISOString().split('T')[0],
-          status: randomStatus
-        });
-      }
-    }
-  });
-  
-  return records;
-};
-
-const mockTasks: Task[] = [
-  {
-    id: '1',
-    title: 'Update User Dashboard',
-    description: 'Implement new features for the user dashboard including analytics widgets',
-    assignedTo: '2',
-    assignedBy: '1',
-    status: 'accepted',
-    createdDate: '2024-01-10',
-    dueDate: '2024-01-20'
-  },
-  {
-    id: '2',
-    title: 'Design System Documentation',
-    description: 'Create comprehensive documentation for the design system components',
-    assignedTo: '3',
-    assignedBy: '1',
-    status: 'completed',
-    createdDate: '2024-01-05',
-    dueDate: '2024-01-15',
-    completedDate: '2024-01-14'
-  },
-  {
-    id: '3',
-    title: 'Marketing Campaign Analysis',
-    description: 'Analyze the performance of Q4 marketing campaigns and prepare report',
-    assignedTo: '4',
-    assignedBy: '1',
-    status: 'pending',
-    createdDate: '2024-01-12',
-    dueDate: '2024-01-25'
-  }
-];
-
 export const EMSProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
-  const [employees, setEmployees] = useState<Employee[]>(mockEmployees);
-  const [attendance, setAttendance] = useState<AttendanceRecord[]>(generateMockAttendance());
-  const [tasks, setTasks] = useState<Task[]>(mockTasks);
+  const [employees, setEmployees] = useState<Employee[]>([]);
+  const [attendance, setAttendance] = useState<AttendanceRecord[]>([]);
+  const [tasks, setTasks] = useState<Task[]>([]);
+  const [loading, setLoading] = useState(true);
 
-  // Listen for new employee registrations
+  // Load data on mount
   React.useEffect(() => {
-    const handleNewEmployee = (event: CustomEvent) => {
-      const newEmployee: Employee = event.detail;
-      setEmployees(prev => [...prev, newEmployee]);
-    };
-
-    window.addEventListener('newEmployeeRegistered', handleNewEmployee as EventListener);
-    return () => {
-      window.removeEventListener('newEmployeeRegistered', handleNewEmployee as EventListener);
-    };
+    refreshData();
   }, []);
 
-  const markAttendance = (employeeId: string, status: AttendanceStatus, date: string) => {
-    setAttendance(prev => {
-      const existingIndex = prev.findIndex(a => a.employeeId === employeeId && a.date === date);
-      const newRecord: AttendanceRecord = {
-        id: `${employeeId}-${date}`,
-        employeeId,
-        date,
-        status
+  const refreshData = async () => {
+    try {
+      setLoading(true);
+      await Promise.all([
+        loadEmployees(),
+        loadAttendance(),
+        loadTasks()
+      ]);
+    } catch (error) {
+      console.error('Error refreshing data:', error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const loadEmployees = async () => {
+    try {
+      const { data, error } = await supabase
+        .from('employees')
+        .select('*')
+        .order('created_at', { ascending: true });
+
+      if (error) throw error;
+
+      const formattedEmployees: Employee[] = data.map(emp => ({
+        id: emp.id,
+        name: emp.name,
+        email: emp.email,
+        department: emp.department,
+        position: emp.position,
+        joinDate: emp.join_date
+      }));
+
+      setEmployees(formattedEmployees);
+    } catch (error) {
+      console.error('Error loading employees:', error);
+    }
+  };
+
+  const loadAttendance = async () => {
+    try {
+      const { data, error } = await supabase
+        .from('attendance_records')
+        .select('*')
+        .order('date', { ascending: false });
+
+      if (error) throw error;
+
+      const formattedAttendance: AttendanceRecord[] = data.map(record => ({
+        id: record.id,
+        employeeId: record.employee_id,
+        date: record.date,
+        status: record.status,
+        notes: record.notes || undefined
+      }));
+
+      setAttendance(formattedAttendance);
+    } catch (error) {
+      console.error('Error loading attendance:', error);
+    }
+  };
+
+  const loadTasks = async () => {
+    try {
+      const { data, error } = await supabase
+        .from('tasks')
+        .select('*')
+        .order('created_at', { ascending: false });
+
+      if (error) throw error;
+
+      const formattedTasks: Task[] = data.map(task => ({
+        id: task.id,
+        title: task.title,
+        description: task.description,
+        assignedTo: task.assigned_to,
+        assignedBy: task.assigned_by,
+        status: task.status,
+        createdDate: task.created_date,
+        dueDate: task.due_date,
+        completedDate: task.completed_date || undefined
+      }));
+
+      setTasks(formattedTasks);
+    } catch (error) {
+      console.error('Error loading tasks:', error);
+    }
+  };
+
+  const markAttendance = async (employeeId: string, status: AttendanceStatus, date: string) => {
+    try {
+      const { data, error } = await supabase
+        .from('attendance_records')
+        .upsert({
+          employee_id: employeeId,
+          date,
+          status
+        }, {
+          onConflict: 'employee_id,date'
+        })
+        .select()
+        .single();
+
+      if (error) throw error;
+
+      // Update local state
+      setAttendance(prev => {
+        const existingIndex = prev.findIndex(a => a.employeeId === employeeId && a.date === date);
+        const newRecord: AttendanceRecord = {
+          id: data.id,
+          employeeId: data.employee_id,
+          date: data.date,
+          status: data.status,
+          notes: data.notes || undefined
+        };
+
+        if (existingIndex >= 0) {
+          const updated = [...prev];
+          updated[existingIndex] = newRecord;
+          return updated;
+        } else {
+          return [...prev, newRecord];
+        }
+      });
+    } catch (error) {
+      console.error('Error marking attendance:', error);
+    }
+  };
+
+  const createTask = async (taskData: Omit<Task, 'id'>) => {
+    try {
+      const { data, error } = await supabase
+        .from('tasks')
+        .insert({
+          title: taskData.title,
+          description: taskData.description,
+          assigned_to: taskData.assignedTo,
+          assigned_by: taskData.assignedBy,
+          status: taskData.status,
+          created_date: taskData.createdDate,
+          due_date: taskData.dueDate,
+          completed_date: taskData.completedDate || null
+        })
+        .select()
+        .single();
+
+      if (error) throw error;
+
+      const newTask: Task = {
+        id: data.id,
+        title: data.title,
+        description: data.description,
+        assignedTo: data.assigned_to,
+        assignedBy: data.assigned_by,
+        status: data.status,
+        createdDate: data.created_date,
+        dueDate: data.due_date,
+        completedDate: data.completed_date || undefined
       };
 
-      if (existingIndex >= 0) {
-        const updated = [...prev];
-        updated[existingIndex] = newRecord;
-        return updated;
-      } else {
-        return [...prev, newRecord];
+      setTasks(prev => [newTask, ...prev]);
+    } catch (error) {
+      console.error('Error creating task:', error);
+    }
+  };
+
+  const updateTaskStatus = async (taskId: string, status: TaskStatus) => {
+    try {
+      const updateData: any = {
+        status,
+        updated_at: new Date().toISOString()
+      };
+
+      if (status === 'completed') {
+        updateData.completed_date = new Date().toISOString().split('T')[0];
       }
-    });
-  };
 
-  const createTask = (taskData: Omit<Task, 'id'>) => {
-    const newTask: Task = {
-      ...taskData,
-      id: Date.now().toString()
-    };
-    setTasks(prev => [...prev, newTask]);
-  };
+      const { data, error } = await supabase
+        .from('tasks')
+        .update(updateData)
+        .eq('id', taskId)
+        .select()
+        .single();
 
-  const updateTaskStatus = (taskId: string, status: TaskStatus) => {
-    setTasks(prev => prev.map(task => 
-      task.id === taskId 
-        ? { 
-            ...task, 
-            status, 
-            completedDate: status === 'completed' ? new Date().toISOString().split('T')[0] : undefined 
-          }
-        : task
-    ));
+      if (error) throw error;
+
+      // Update local state
+      setTasks(prev => prev.map(task => 
+        task.id === taskId 
+          ? { 
+              ...task, 
+              status: data.status, 
+              completedDate: data.completed_date || undefined 
+            }
+          : task
+      ));
+    } catch (error) {
+      console.error('Error updating task status:', error);
+    }
   };
 
   const getEmployeeAttendance = (employeeId: string, month?: string) => {
@@ -227,12 +296,14 @@ export const EMSProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     employees,
     attendance,
     tasks,
+    loading,
     markAttendance,
     createTask,
     updateTaskStatus,
     getEmployeeAttendance,
     getEmployeeTasks,
-    getAttendanceStats
+    getAttendanceStats,
+    refreshData
   };
 
   return <EMSContext.Provider value={value}>{children}</EMSContext.Provider>;

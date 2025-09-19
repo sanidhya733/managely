@@ -1,4 +1,5 @@
 import React, { createContext, useContext, useState, ReactNode } from 'react';
+import { supabase } from '@/lib/supabase';
 
 export type UserRole = 'admin' | 'employee';
 
@@ -12,100 +13,151 @@ export interface User {
 
 interface AuthContextType {
   user: User | null;
-  login: (email: string, password: string, role: UserRole) => Promise<boolean>;
+  login: (email: string, password: string) => Promise<boolean>;
   register: (userData: { name: string; email: string; password: string; department: string; position: string }) => Promise<boolean>;
   logout: () => void;
   isAuthenticated: boolean;
+  loading: boolean;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
-// Mock users for demonstration
-const mockUsers: User[] = [
-  {
-    id: '1',
-    name: 'Admin User',
-    email: 'admin@company.com',
-    role: 'admin',
-    department: 'Management'
-  },
-  {
-    id: '2',
-    name: 'John Smith',
-    email: 'john@company.com',
-    role: 'employee',
-    department: 'Engineering'
-  },
-  {
-    id: '3',
-    name: 'Sarah Johnson',
-    email: 'sarah@company.com',
-    role: 'employee',
-    department: 'Design'
-  },
-  {
-    id: '4',
-    name: 'Mike Wilson',
-    email: 'mike@company.com',
-    role: 'employee',
-    department: 'Marketing'
-  }
-];
-
 export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
   const [user, setUser] = useState<User | null>(null);
-  const [allUsers, setAllUsers] = useState<User[]>(mockUsers);
+  const [loading, setLoading] = useState(true);
 
-  const login = async (email: string, password: string, role: UserRole): Promise<boolean> => {
-    // Simulate API call delay
-    await new Promise(resolve => setTimeout(resolve, 1000));
-    
-    // Find user by email and role
-    const foundUser = allUsers.find(u => u.email === email && u.role === role);
-    
-    if (foundUser) {
-      setUser(foundUser);
-      return true;
+  // Check for existing session on mount
+  React.useEffect(() => {
+    const getSession = async () => {
+      try {
+        const { data: { session } } = await supabase.auth.getSession();
+        if (session?.user) {
+          await loadUserProfile(session.user.id);
+        }
+      } catch (error) {
+        console.error('Error getting session:', error);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    getSession();
+
+    // Listen for auth changes
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
+      if (event === 'SIGNED_IN' && session?.user) {
+        await loadUserProfile(session.user.id);
+      } else if (event === 'SIGNED_OUT') {
+        setUser(null);
+      }
+    });
+
+    return () => subscription.unsubscribe();
+  }, []);
+
+  const loadUserProfile = async (userId: string) => {
+    try {
+      const { data: employee, error } = await supabase
+        .from('employees')
+        .select('*')
+        .eq('id', userId)
+        .single();
+
+      if (error) throw error;
+
+      if (employee) {
+        const role: UserRole = employee.email.includes('admin') ? 'admin' : 'employee';
+        setUser({
+          id: employee.id,
+          name: employee.name,
+          email: employee.email,
+          role,
+          department: employee.department
+        });
+      }
+    } catch (error) {
+      console.error('Error loading user profile:', error);
     }
-    
-    return false;
+  };
+
+  const login = async (email: string, password: string): Promise<boolean> => {
+    try {
+      setLoading(true);
+      
+      // First check if user exists in employees table
+      const { data: employee, error: employeeError } = await supabase
+        .from('employees')
+        .select('*')
+        .eq('email', email)
+        .single();
+
+      if (employeeError || !employee) {
+        return false;
+      }
+
+      // For demo purposes, we'll use a simple password check
+      // In production, you should use Supabase Auth properly
+      if (password === 'password') {
+        const role: UserRole = employee.email.includes('admin') ? 'admin' : 'employee';
+        setUser({
+          id: employee.id,
+          name: employee.name,
+          email: employee.email,
+          role,
+          department: employee.department
+        });
+        return true;
+      }
+      
+      return false;
+    } catch (error) {
+      console.error('Login error:', error);
+      return false;
+    } finally {
+      setLoading(false);
+    }
   };
 
   const register = async (userData: { name: string; email: string; password: string; department: string; position: string }): Promise<boolean> => {
-    // Simulate API call delay
-    await new Promise(resolve => setTimeout(resolve, 1000));
-    
-    // Check if user already exists
-    const existingUser = allUsers.find(u => u.email === userData.email);
-    if (existingUser) {
+    try {
+      setLoading(true);
+      
+      // Check if user already exists
+      const { data: existingEmployee } = await supabase
+        .from('employees')
+        .select('id')
+        .eq('email', userData.email)
+        .single();
+
+      if (existingEmployee) {
+        return false;
+      }
+
+      // Create new employee
+      const { data: newEmployee, error } = await supabase
+        .from('employees')
+        .insert({
+          name: userData.name,
+          email: userData.email,
+          department: userData.department,
+          position: userData.position
+        })
+        .select()
+        .single();
+
+      if (error) throw error;
+
+      return true;
+    } catch (error) {
+      console.error('Registration error:', error);
       return false;
+    } finally {
+      setLoading(false);
     }
-
-    // Create new user
-    const newUser: User = {
-      id: (allUsers.length + 1).toString(),
-      name: userData.name,
-      email: userData.email,
-      role: 'employee' as UserRole,
-      department: userData.department
-    };
-
-    // Add to users list
-    setAllUsers(prev => [...prev, newUser]);
-    
-    // Dispatch custom event to notify EMSContext
-    window.dispatchEvent(new CustomEvent('newEmployeeRegistered', { 
-      detail: { 
-        ...newUser, 
-        position: userData.position,
-        joinDate: new Date().toISOString().split('T')[0]
-      } 
-    }));
-
-    return true;
   };
 
   const logout = () => {
+    supabase.auth.signOut();
     setUser(null);
   };
 
@@ -114,7 +166,8 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     login,
     register,
     logout,
-    isAuthenticated: !!user
+    isAuthenticated: !!user,
+    loading
   };
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
@@ -127,5 +180,3 @@ export const useAuth = () => {
   }
   return context;
 };
-
-export { mockUsers };
