@@ -112,13 +112,28 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         return true;
       }
       return false;
-    } catch (error) {
+    } catch (error: any) {
       console.error('Login error:', error);
-      toast({
-        title: "Login failed",
-        description: "An unexpected error occurred",
-        variant: "destructive"
-      });
+      
+      if (error?.code === 'email_not_confirmed') {
+        toast({
+          title: "Email Not Confirmed",
+          description: "Please check your email and click the confirmation link before logging in.",
+          variant: "destructive"
+        });
+      } else if (error?.code === 'invalid_credentials') {
+        toast({
+          title: "Invalid Credentials",
+          description: "Please check your email and password and try again.",
+          variant: "destructive"
+        });
+      } else {
+        toast({
+          title: "Login failed",
+          description: error?.message || "An unexpected error occurred",
+          variant: "destructive"
+        });
+      }
       return false;
     }
   };
@@ -154,7 +169,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       if (data.user) {
         toast({
           title: "Registration successful",
-          description: "Please check your email to verify your account"
+          description: "Please check your email to verify your account before logging in"
         });
         return true;
       }
