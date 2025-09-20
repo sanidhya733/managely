@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth, UserRole } from '@/contexts/AuthContext';
 import { Button } from '@/components/ui/button';
@@ -26,9 +26,25 @@ const LoginPage: React.FC = () => {
     position: ''
   });
   
-  const { login, register } = useAuth();
+  const { login, register, isAuthenticated, user, loading } = useAuth();
   const navigate = useNavigate();
   const { toast } = useToast();
+
+  // Redirect if already authenticated
+  useEffect(() => {
+    if (isAuthenticated && user) {
+      navigate(user.role === 'admin' ? '/admin' : '/employee');
+    }
+  }, [isAuthenticated, user, navigate]);
+
+  // Show loading while checking authentication
+  if (loading) {
+    return (
+      <div className="min-h-screen gradient-primary flex items-center justify-center">
+        <div className="text-white text-lg">Loading...</div>
+      </div>
+    );
+  }
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -158,21 +174,21 @@ const LoginPage: React.FC = () => {
                   </TabsList>
                   
                   <TabsContent value="admin" className="mt-4">
-                    <div className="text-center">
-                      <Badge variant="secondary" className="mb-2">Demo Credentials</Badge>
-                      <p className="text-sm text-muted-foreground">admin@company.com / password</p>
-                    </div>
+                     <div className="text-center">
+                       <Badge variant="secondary" className="mb-2">To Test</Badge>
+                       <p className="text-sm text-muted-foreground">
+                         Create an admin account through signup, or register a new employee first
+                       </p>
+                     </div>
                   </TabsContent>
                   
                   <TabsContent value="employee" className="mt-4">
-                    <div className="text-center">
-                      <Badge variant="secondary" className="mb-2">Demo Credentials</Badge>
-                      <p className="text-sm text-muted-foreground">
-                        john@company.com / password<br />
-                        sarah@company.com / password<br />
-                        mike@company.com / password
-                      </p>
-                    </div>
+                     <div className="text-center">
+                       <Badge variant="secondary" className="mb-2">To Test</Badge>
+                       <p className="text-sm text-muted-foreground">
+                         Register as new employee first, then login
+                       </p>
+                     </div>
                   </TabsContent>
                 </Tabs>
 
