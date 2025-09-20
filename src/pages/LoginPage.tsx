@@ -117,19 +117,11 @@ const LoginPage: React.FC = () => {
         });
         setIsRegistering(false);
         setRegisterForm({ name: '', email: '', password: '', department: '', position: '' });
-      } else {
-        toast({
-          title: "Registration Failed",
-          description: "Email already exists or registration failed",
-          variant: "destructive"
-        });
       }
+      // AuthContext already shows the specific error message, so no need to show another one
     } catch (error) {
-      toast({
-        title: "Error",
-        description: "An error occurred during registration",
-        variant: "destructive"
-      });
+      // AuthContext already handles and shows the error, so we don't need to show another toast here
+      console.error('Registration error in LoginPage:', error);
     } finally {
       setIsLoading(false);
     }
