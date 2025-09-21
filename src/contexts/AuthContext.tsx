@@ -210,6 +210,9 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   const logout = async () => {
     try {
       await supabase.auth.signOut();
+      // Explicitly clear the session and user state
+      setSession(null);
+      setUser(null);
       toast({
         title: "Logged out",
         description: "You have been successfully logged out"
