@@ -33,31 +33,43 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   useEffect(() => {
     // Set up auth state listener
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
-      async (event, session) => {
+      (event, session) => {
         console.log('Auth state changed:', event, session);
         setSession(session);
         
         if (session?.user) {
-          // Fetch user profile
-          const { data: profile } = await supabase
-            .from('profiles')
-            .select('*')
-            .eq('id', session.user.id)
-            .single();
-          
-          if (profile) {
-            setUser({
-              id: profile.id,
-              name: profile.name,
-              email: profile.email,
-              role: profile.role as UserRole,
-              department: profile.department
-            });
-          }
+          // Defer profile fetching to avoid deadlock
+          setTimeout(async () => {
+            try {
+              const { data: profile, error } = await supabase
+                .from('profiles')
+                .select('*')
+                .eq('id', session.user.id)
+                .single();
+              
+              if (error) {
+                console.error('Profile fetch error:', error);
+                setUser(null);
+              } else if (profile) {
+                setUser({
+                  id: profile.id,
+                  name: profile.name,
+                  email: profile.email,
+                  role: profile.role as UserRole,
+                  department: profile.department
+                });
+              }
+              setLoading(false);
+            } catch (error) {
+              console.error('Profile fetch error:', error);
+              setUser(null);
+              setLoading(false);
+            }
+          }, 0);
         } else {
           setUser(null);
+          setLoading(false);
         }
-        setLoading(false);
       }
     );
 
@@ -67,25 +79,36 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       setSession(session);
       
       if (session?.user) {
-        // Fetch user profile
-        const { data: profile } = await supabase
-          .from('profiles')
-          .select('*')
-          .eq('id', session.user.id)
-          .single();
-        
-        if (profile) {
-          setUser({
-            id: profile.id,
-            name: profile.name,
-            email: profile.email,
-            role: profile.role as UserRole,
-            department: profile.department
-          });
+        try {
+          // Fetch user profile
+          const { data: profile, error } = await supabase
+            .from('profiles')
+            .select('*')
+            .eq('id', session.user.id)
+            .single();
+          
+          if (error) {
+            console.error('Initial profile fetch error:', error);
+            setUser(null);
+          } else if (profile) {
+            setUser({
+              id: profile.id,
+              name: profile.name,
+              email: profile.email,
+              role: profile.role as UserRole,
+              department: profile.department
+            });
+          }
+        } catch (error) {
+          console.error('Initial profile fetch error:', error);
+          setUser(null);
         }
       } else {
         setUser(null);
       }
+      setLoading(false);
+    }).catch((error) => {
+      console.error('Session check error:', error);
       setLoading(false);
     });
 
