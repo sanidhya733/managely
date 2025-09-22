@@ -117,11 +117,7 @@ export const EMSProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     try {
       const { data, error } = await supabase
         .from('tasks')
-        .select(`
-          *,
-          assigned_to_employee:employees!tasks_assigned_to_fkey(name),
-          assigned_by_profile:profiles!tasks_assigned_by_fkey(name)
-        `)
+        .select('*')
         .order('created_date', { ascending: false });
         
       if (error) throw error;
