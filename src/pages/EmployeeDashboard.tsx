@@ -19,15 +19,30 @@ import EmployeeTaskView from '@/components/EmployeeTaskView';
 
 const EmployeeDashboard: React.FC = () => {
   const { user, logout } = useAuth();
-  const { getAttendanceStats, getEmployeeTasks } = useEMS();
+  const { employees, getAttendanceStats, getEmployeeTasks } = useEMS();
   const [activeTab, setActiveTab] = useState('attendance');
 
   if (!user) return null;
 
-  // Calculate stats for current month
+  // Find the employee record for the current user
+  const currentEmployee = employees.find(emp => emp.userId === user.id);
+  const employeeId = currentEmployee?.id;
+
+  if (!employeeId) {
+    return (
+      <div className="min-h-screen bg-background flex items-center justify-center">
+        <div className="text-center">
+          <p className="text-lg text-muted-foreground">Employee record not found</p>
+          <Button onClick={logout} className="mt-4">Logout</Button>
+        </div>
+      </div>
+    );
+  }
+
+  // Calculate stats for current month using employee ID
   const currentMonth = new Date().toISOString().substring(0, 7);
-  const attendanceStats = getAttendanceStats(user.id, currentMonth);
-  const myTasks = getEmployeeTasks(user.id);
+  const attendanceStats = getAttendanceStats(employeeId, currentMonth);
+  const myTasks = getEmployeeTasks(employeeId);
   
   const taskStats = {
     total: myTasks.length,
@@ -149,11 +164,11 @@ const EmployeeDashboard: React.FC = () => {
               </TabsList>
 
               <TabsContent value="attendance" className="mt-6">
-                <EmployeeAttendanceView employeeId={user.id} />
+                <EmployeeAttendanceView employeeId={employeeId} />
               </TabsContent>
 
               <TabsContent value="tasks" className="mt-6">
-                <EmployeeTaskView employeeId={user.id} />
+                <EmployeeTaskView employeeId={employeeId} />
               </TabsContent>
             </Tabs>
           </CardContent>

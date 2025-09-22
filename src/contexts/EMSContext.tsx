@@ -32,6 +32,7 @@ export interface Employee {
   department: string;
   position: string;
   joinDate: string;
+  userId?: string;
 }
 
 interface EMSContextType {
@@ -71,7 +72,8 @@ export const EMSProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         email: emp.email,
         department: emp.department,
         position: emp.position,
-        joinDate: emp.join_date
+        joinDate: emp.join_date,
+        userId: emp.user_id
       }));
       
       setEmployees(formattedEmployees);
